@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Irodx - Weather & Time</title>
+    <link rel="icon" href="NowTerra.png" type="image/png" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="fullscreen-container">
+        <!-- Search Panel -->
+        <div class="search-panel">
+            <div class="branding">
+                <h1><i class="fas fa-globe-americas"></i> Irodx</h1>
+                <p>Weather & Time for any city worldwide</p>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="cityInput" placeholder="Enter city name (e.g., Dhaka, Tokyo, London)">
+                <button id="searchBtn">
+                    <i class="fas fa-search"></i> Search
+                </button>
+            </div>
+            
+            <div class="recent-searches" id="recentSearches">
+                <!-- Recent searches will be populated here -->
+            </div>
+            
+            <div class="footer">
+                <i class="fas fa-code"></i> Developer Toha.
+            </div>
+        </div>
+        
+        <!-- Results Panel -->
+        <div class="results-panel">
+            <div class="weather-content">
+                <div id="result">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <p class="loading-text">Enter a city name to get started</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    
+</body>
+</html>
