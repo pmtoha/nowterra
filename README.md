@@ -1,34 +1,38 @@
-# Irodx – Weather & Time
+# Irodx - Weather & Time App
 
-Irodx is a sleek, responsive web application that provides real-time weather conditions and local time for any city worldwide. With a clean dual-panel interface, it offers instant search, recent search history, offline caching, and touch-friendly interactions—perfect for both desktop and mobile use.
+A sleek, responsive web application that provides real-time weather data and local time information for any city worldwide. The app features a modern glass-morphism UI, recent search history, caching for offline support, and live updating clocks.
 
-**(https://www.aitinc.site/nowterra.html)
+**Live Demo:** [https://www.aitinc.site/nowterra.html](https://www.aitinc.site/nowterra.html)  
+*Note: The live demo connects to a backend configured with API keys. To run your own instance, follow the setup instructions below.*
 
-## ✨ Features
+## Features
 
-- **Real-time Weather Data** – Temperature (current, min/max, feels like), humidity, wind speed, and condition description.
-- **Local Time Display** – Accurate timezone-based local time and date for the searched city.
-- **City Search** – Search by city name (e.g., Dhaka, Tokyo, London).
-- **Recent Searches** – Last 5 searches saved locally for quick access.
-- **Smart Caching** – Weather data is cached for 1 hour, reducing API calls and enabling offline fallback.
-- **Responsive Design** – Optimized for both desktop (side-by-side panels) and mobile (vertical stacked panels).
-- **Touch Gestures** – Swipe up on weather results to scroll (mobile) and animated button feedback.
-- **Error Handling** – User-friendly messages for invalid cities or network issues.
+- 🌍 **Global Weather** – Temperature, humidity, wind speed, min/max, and condition description.
+- 🕒 **Local Time** – Real‑time digital clock and date for the selected city.
+- 🎨 **Dynamic Background** – Gradient changes based on temperature (hot/warm/cold).
+- 📱 **Fully Responsive** – Optimized for desktop, tablet, and mobile devices.
+- 💾 **Smart Caching** – Caches weather/time data for 1 hour; works offline with cached data.
+- 🔍 **Recent Searches** – Saves last 5 searched cities in localStorage.
+- 🧩 **Fallback Timezone** – Uses TimezoneDB API if available, otherwise a built‑in city mapping.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-- **HTML5** – Semantic structure
-- **CSS3** – Custom styles + Tailwind CSS (CDN) for utility classes
-- **JavaScript (ES6+)** – Async API calls, DOM manipulation, local storage
-- **APIs**:
-  - [OpenWeatherMap](https://openweathermap.org/api) – Current weather data
-  - [TimeZoneDB](https://timezonedb.com/api) – Local time by coordinates
-- **Icons** – Font Awesome 6.4.0
-- **Fonts** – Google Fonts (Poppins)
+- **Backend:** Python 3, Flask, Flask‑CORS
+- **APIs:** OpenWeatherMap (Geo & Weather), TimezoneDB (optional)
+- **Frontend:** Vanilla JavaScript, HTML5, CSS3 (Glassmorphism design)
+- **External Libraries:** `requests`, `pytz`, `python-dotenv`
 
-## 🚀 Getting Started
+## Prerequisites
 
-### Prerequisites
+- Python 3.8 or higher
+- A free API key from [OpenWeatherMap](https://openweathermap.org/api) (required)
+- (Optional) A free API key from [TimezoneDB](https://timezonedb.com/) – improves timezone accuracy
 
-- A modern web browser (Chrome, Firefox, Safari, Edge)
-- API keys from OpenWeatherMap and TimeZoneDB (free tiers available)
+## Installation
+
+1. **Clone or download** this repository to your local machine.
+
+2. **Navigate to the project directory** and create a virtual environment (recommended):
+   ```bash
+   python -m venv venv
+   source venv/bin/activate   # On Windows: venv\Scripts\activate

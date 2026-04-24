@@ -1,298 +1,348 @@
 
-        // API Keys
-        const WEATHER_API_KEY = 'f9f2972513c8c2416a019f5c7f102dcd';
-        const TIME_API_KEY = 'YS9TY9BKOBGV';
-        
-        // DOM Elements
-        const cityInput = document.getElementById('cityInput');
-        const searchBtn = document.getElementById('searchBtn');
-        const resultDiv = document.getElementById('result');
-        const recentSearchesDiv = document.getElementById('recentSearches');
-        
-        // Variables for swipe detection
-        let startY = 0;
-        let endY = 0;
-        
-        // Event Listeners
-        searchBtn.addEventListener('click', searchWeather);
-        searchBtn.addEventListener('touchstart', function(e) {
-            e.preventDefault();
-            this.style.transform = 'translateY(0)';
-            this.style.boxShadow = '0 2px 10px rgba(255, 107, 107, 0.3)';
-        });
-        searchBtn.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            this.style.transform = '';
-            this.style.boxShadow = '';
-            searchWeather();
-        });
-        
-        cityInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') searchBtn.click();
-        });
-        
-        // Touch events for swipe detection
-        resultDiv.addEventListener('touchstart', (e) => {
-            startY = e.touches[0].clientY;
-        });
-        
-        resultDiv.addEventListener('touchmove', (e) => {
-            endY = e.touches[0].clientY;
-        });
-        
-        resultDiv.addEventListener('touchend', () => {
-            if (startY - endY > 50) { // Swipe up
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        (function() {
+            // ----------------------------- DOM element creation helpers -----------------------------
+            function createElement(tag, className, attributes = {}, children = []) {
+                const el = document.createElement(tag);
+                if (className) el.className = className;
+                for (let [key, value] of Object.entries(attributes)) {
+                    if (key === 'innerHTML') el.innerHTML = value;
+                    else if (key === 'textContent') el.textContent = value;
+                    else el.setAttribute(key, value);
+                }
+                children.forEach(child => {
+                    if (typeof child === 'string') el.appendChild(document.createTextNode(child));
+                    else el.appendChild(child);
+                });
+                return el;
             }
-        });
-        
-        // Initialize with a default city and load recent searches
-        window.addEventListener('load', () => {
-            loadRecentSearches();
-            const cachedData = getCachedWeatherData();
-            if (cachedData) {
-                displayResults(cachedData.weather, cachedData.time);
-            } else {
-                getWeatherAndTimeData('New York');
+
+            // ----------------------------- State & Cache -----------------------------
+            let currentWeatherData = null;
+            let currentTimeData = null;
+            let liveClockInterval = null;
+            let isLoading = false;
+            let errorMessage = null;
+            let recentSearchesList = [];
+            let cityInputValue = '';
+            let isMobile = window.innerWidth <= 768;
+            let gradientStyle = 'linear-gradient(135deg, #e0e5ec 0%, #f0f2f5 100%)';
+
+            // DOM elements references (to be populated after render)
+            let rootEl, resultContainer, weatherContentEl, cityInputEl, recentContainer, bgGradientEl;
+
+            // Icon mapping (emoji/text fallback because FontAwesome removed)
+            const iconMap = {
+                '01d': '☀️', '01n': '🌙',
+                '02d': '⛅', '02n': '☁️',
+                '03d': '☁️', '03n': '☁️',
+                '04d': '☁️', '04n': '☁️',
+                '09d': '🌧️', '09n': '🌧️',
+                '10d': '🌦️', '10n': '🌧️',
+                '11d': '⛈️', '11n': '⛈️',
+                '13d': '❄️', '13n': '❄️',
+                '50d': '🌫️', '50n': '🌫️'
+            };
+            const defaultIcon = '🌥️';
+
+            // ----------------------------- Helper Functions (original logic) -----------------------------
+            function saveToRecentSearches(city) {
+                let recent = JSON.parse(localStorage.getItem('recentSearches')) || [];
+                recent = recent.filter(item => item.toLowerCase() !== city.toLowerCase());
+                recent.unshift(city);
+                if (recent.length > 5) recent = recent.slice(0, 5);
+                localStorage.setItem('recentSearches', JSON.stringify(recent));
+                recentSearchesList = recent;
+                renderRecentButtons();
             }
-        });
-        
-        // Save recent searches to localStorage
-        function saveToRecentSearches(city) {
-            let recentSearches = JSON.parse(localStorage.getItem('recentSearches')) || [];
-            
-            // Remove if already exists
-            recentSearches = recentSearches.filter(item => item !== city);
-            
-            // Add to beginning
-            recentSearches.unshift(city);
-            
-            // Keep only last 5 searches
-            if (recentSearches.length > 5) {
-                recentSearches = recentSearches.slice(0, 5);
+
+            function loadRecentSearches() {
+                const recent = JSON.parse(localStorage.getItem('recentSearches')) || [];
+                recentSearchesList = recent;
+                renderRecentButtons();
             }
-            
-            localStorage.setItem('recentSearches', JSON.stringify(recentSearches));
-            loadRecentSearches();
-        }
-        
-        function loadRecentSearches() {
-            const recentSearches = JSON.parse(localStorage.getItem('recentSearches')) || [];
-            recentSearchesDiv.innerHTML = '';
-            
-            if (recentSearches.length > 0) {
-                recentSearches.forEach(city => {
-                    const btn = document.createElement('button');
-                    btn.className = 'recent-btn';
-                    btn.textContent = city;
+
+            function cacheWeatherData(weather, time) {
+                const dataToCache = { weather, time, timestamp: new Date().getTime() };
+                localStorage.setItem('cachedWeatherData', JSON.stringify(dataToCache));
+            }
+
+            function getCachedWeatherData() {
+                const cachedData = localStorage.getItem('cachedWeatherData');
+                if (!cachedData) return null;
+                const parsedData = JSON.parse(cachedData);
+                const now = new Date().getTime();
+                if (now - parsedData.timestamp < 3600000) return parsedData;
+                return null;
+            }
+
+            function showError(msg) {
+                if (liveClockInterval) clearInterval(liveClockInterval);
+                errorMessage = msg;
+                currentWeatherData = null;
+                currentTimeData = null;
+                isLoading = false;
+                renderResultContent();
+            }
+
+            function displayResults(weather, time) {
+                if (liveClockInterval) clearInterval(liveClockInterval);
+                const temp = Math.round(weather.main.temp);
+                let bgColor1 = '#e0e5ec', bgColor2 = '#f0f2f5';
+                if (temp > 30) { bgColor1 = '#fff3e0'; bgColor2 = '#ffe0b2'; }
+                else if (temp < 15) { bgColor1 = '#e3f2fd'; bgColor2 = '#bbdefb'; }
+                
+                if (isMobile) {
+                    document.body.style.backgroundColor = bgColor1;
+                    gradientStyle = `linear-gradient(135deg, ${bgColor1} 0%, ${bgColor2} 100%)`;
+                } else {
+                    document.body.style.backgroundColor = '';
+                    gradientStyle = `linear-gradient(135deg, ${bgColor1} 0%, ${bgColor2} 100%)`;
+                }
+                if (bgGradientEl) bgGradientEl.style.background = gradientStyle;
+                
+                if (weatherContentEl) {
+                    weatherContentEl.style.animation = 'none';
+                    weatherContentEl.offsetHeight;
+                    weatherContentEl.style.animation = 'fadeInUp 0.6s forwards';
+                }
+                
+                currentWeatherData = weather;
+                currentTimeData = time;
+                errorMessage = null;
+                isLoading = false;
+                renderResultContent();
+                startLiveClock(time.zoneName);
+            }
+
+            async function getWeatherAndTimeData(city) {
+                isLoading = true;
+                errorMessage = null;
+                renderResultContent();
+                try {
+                    const response = await fetch(`/api/weather-time?city=${encodeURIComponent(city)}`);
+                    const responseText = await response.text();
+                    if (!response.ok) {
+                        let errorMsgText = `Server error: ${response.status}`;
+                        if (response.headers.get('content-type')?.includes('application/json')) {
+                            try {
+                                const errorData = JSON.parse(responseText);
+                                errorMsgText = errorData.error || errorMsgText;
+                            } catch(e) {}
+                        } else {
+                            if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                                errorMsgText = "Backend returned HTML. Make sure Flask is running on port 5000.";
+                            } else {
+                                errorMsgText = responseText.substring(0, 200);
+                            }
+                        }
+                        throw new Error(errorMsgText);
+                    }
+                    let data;
+                    try {
+                        data = JSON.parse(responseText);
+                    } catch(e) {
+                        throw new Error('Invalid JSON from server');
+                    }
+                    if (!data.weather || !data.time || !data.time.zoneName) {
+                        throw new Error('Incomplete data received');
+                    }
+                    cacheWeatherData(data.weather, data.time);
+                    saveToRecentSearches(data.weather.name);
+                    displayResults(data.weather, data.time);
+                } catch (error) {
+                    console.error(error);
+                    const cachedData = getCachedWeatherData();
+                    if (cachedData) {
+                        displayResults(cachedData.weather, cachedData.time);
+                        showError('Offline mode: Showing cached data.<br>' + error.message);
+                    } else {
+                        showError(error.message);
+                    }
+                }
+            }
+
+            function startLiveClock(timezone) {
+                function updateClock() {
+                    const now = new Date();
+                    const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: timezone };
+                    const dateOptions = { weekday: 'long', month: 'short', day: 'numeric', timeZone: timezone };
+                    const timeEl = document.getElementById('live-time');
+                    const dateEl = document.getElementById('live-date');
+                    if (timeEl) timeEl.innerText = now.toLocaleTimeString('en-US', timeOptions);
+                    if (dateEl) dateEl.innerText = now.toLocaleDateString('en-US', dateOptions);
+                }
+                updateClock();
+                if (liveClockInterval) clearInterval(liveClockInterval);
+                liveClockInterval = setInterval(updateClock, 1000);
+            }
+
+            // ----------------------------- Rendering Functions (all DOM built with JS) -----------------------------
+            function renderRecentButtons() {
+                if (!recentContainer) return;
+                recentContainer.innerHTML = '';
+                recentSearchesList.forEach(city => {
+                    const btn = createElement('button', 'recent-btn', { textContent: city });
                     btn.addEventListener('click', () => {
-                        cityInput.value = city;
+                        cityInputEl.value = city;
+                        cityInputValue = city;
                         getWeatherAndTimeData(city);
                     });
-                    btn.addEventListener('touchstart', () => {
-                        btn.style.transform = 'scale(0.95)';
-                    });
-                    btn.addEventListener('touchend', () => {
-                        btn.style.transform = '';
-                    });
-                    recentSearchesDiv.appendChild(btn);
+                    recentContainer.appendChild(btn);
                 });
             }
-        }
-        
-        function searchWeather() {
-            const city = cityInput.value.trim();
-            if (city) {
-                showLoading();
-                getWeatherAndTimeData(city);
-            }
-        }
-        
-        function showLoading() {
-            resultDiv.innerHTML = `
-                <div class="loading">
-                    <div class="loading-spinner"></div>
-                    <p class="loading-text">Fetching weather data...</p>
-                </div>
-            `;
-        }
-        
-        function cacheWeatherData(weatherData, timeData) {
-            const dataToCache = {
-                weather: weatherData,
-                time: timeData,
-                timestamp: new Date().getTime()
-            };
-            localStorage.setItem('cachedWeatherData', JSON.stringify(dataToCache));
-        }
-        
-        function getCachedWeatherData() {
-            const cachedData = localStorage.getItem('cachedWeatherData');
-            if (!cachedData) return null;
-            
-            const parsedData = JSON.parse(cachedData);
-            const now = new Date().getTime();
-            const oneHour = 60 * 60 * 1000;
-            
-            // Return cached data if it's less than 1 hour old
-            if (now - parsedData.timestamp < oneHour) {
-                return parsedData;
-            }
-            
-            return null;
-        }
-        
-        async function getWeatherAndTimeData(city) {
-            try {
-                // Get weather data
-                const weatherResponse = await fetch(
-                    `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${WEATHER_API_KEY}&units=metric`
-                );
-                const weatherData = await weatherResponse.json();
-                
-                if (weatherData.cod !== 200) {
-                    showError(weatherData.message || 'City not found!');
+
+            function renderResultContent() {
+                if (!resultContainer) return;
+                resultContainer.innerHTML = '';
+                if (isLoading) {
+                    const loadingDiv = createElement('div', 'loading', {}, [
+                        createElement('div', 'loading-spinner'),
+                        createElement('p', '', { textContent: 'Fetching data...' })
+                    ]);
+                    resultContainer.appendChild(loadingDiv);
                     return;
                 }
-                
-                // Get time data
-                const lat = weatherData.coord.lat;
-                const lon = weatherData.coord.lon;
-                
-                const timeResponse = await fetch(
-                    `https://api.timezonedb.com/v2.1/get-time-zone?key=${TIME_API_KEY}&format=json&by=position&lat=${lat}&lng=${lon}`
-                );
-                const timeData = await timeResponse.json();
-                
-                if (timeData.status !== "OK") {
-                    showError('Could not retrieve time data');
+                if (errorMessage) {
+                    const errorDiv = createElement('div', 'error', { innerHTML: `<span>⚠️ ${errorMessage}</span>` });
+                    resultContainer.appendChild(errorDiv);
                     return;
                 }
+                if (currentWeatherData && currentTimeData) {
+                    const temp = Math.round(currentWeatherData.main.temp);
+                    const feelsLike = Math.round(currentWeatherData.main.feels_like);
+                    const iconCode = currentWeatherData.weather[0].icon;
+                    const iconChar = iconMap[iconCode] || defaultIcon;
+                    
+                    // Weather card
+                    const weatherCard = createElement('div', 'glass-card');
+                    const header = createElement('div', 'weather-header');
+                    const titleDiv = createElement('div', '', {}, [
+                        createElement('h2', '', { textContent: currentWeatherData.name }),
+                        createElement('p', '', { textContent: currentWeatherData.weather[0].description })
+                    ]);
+                    const iconDiv = createElement('div', 'weather-icon', { textContent: iconChar });
+                    header.appendChild(titleDiv);
+                    header.appendChild(iconDiv);
+                    
+                    const tempDiv = createElement('div', 'temp-display', { textContent: `${temp}°C` });
+                    const feelsDiv = createElement('div', 'temp-sub', { textContent: `Feels like ${feelsLike}°C` });
+                    
+                    const detailsGrid = createElement('div', 'weather-details');
+                    const details = [
+                        { icon: '💧', label: 'Humidity', value: `${currentWeatherData.main.humidity}%` },
+                        { icon: '💨', label: 'Wind', value: `${currentWeatherData.wind.speed} m/s` },
+                        { icon: '🌡️', label: 'Min', value: `${Math.round(currentWeatherData.main.temp_min)}°` },
+                        { icon: '🌡️', label: 'Max', value: `${Math.round(currentWeatherData.main.temp_max)}°` }
+                    ];
+                    details.forEach(d => {
+                        const item = createElement('div', 'detail-item');
+                        const iconSpan = createElement('div', 'detail-icon', { textContent: d.icon });
+                        const infoDiv = createElement('div', 'detail-info', {}, [
+                            createElement('p', '', { textContent: d.label }),
+                            createElement('p', '', { textContent: d.value })
+                        ]);
+                        item.appendChild(iconSpan);
+                        item.appendChild(infoDiv);
+                        detailsGrid.appendChild(item);
+                    });
+                    
+                    weatherCard.appendChild(header);
+                    weatherCard.appendChild(tempDiv);
+                    weatherCard.appendChild(feelsDiv);
+                    weatherCard.appendChild(detailsGrid);
+                    
+                    // Time card
+                    const timeCard = createElement('div', 'glass-card time-info');
+                    const timeTitle = createElement('h3', '', {}, [ '🕒 ', createElement('span', '', { textContent: 'Local Time' }) ]);
+                    const timeDisplay = createElement('div', 'time-display', { id: 'live-time', textContent: '--:--:-- --' });
+                    const dateDisplay = createElement('div', 'date-display', { id: 'live-date', textContent: 'Loading...' });
+                    timeCard.appendChild(timeTitle);
+                    timeCard.appendChild(timeDisplay);
+                    timeCard.appendChild(dateDisplay);
+                    
+                    resultContainer.appendChild(weatherCard);
+                    resultContainer.appendChild(timeCard);
+                } else {
+                    const emptyDiv = createElement('div', 'loading', {}, [
+                        createElement('div', 'loading-spinner'),
+                        createElement('p', '', { textContent: 'Enter a city name to get started' })
+                    ]);
+                    resultContainer.appendChild(emptyDiv);
+                }
+            }
+
+            function renderFullUI() {
+                // Clear root
+                rootEl.innerHTML = '';
+                // Background gradient
+                bgGradientEl = createElement('div', 'bg-gradient');
+                bgGradientEl.style.background = gradientStyle;
+                rootEl.appendChild(bgGradientEl);
                 
-                // Save to cache and recent searches
-                cacheWeatherData(weatherData, timeData);
-                saveToRecentSearches(city);
+                const fullContainer = createElement('div', 'fullscreen-container');
                 
-                // Display results
-                displayResults(weatherData, timeData);
+                // Search Panel
+                const searchPanel = createElement('div', 'search-panel');
+                const branding = createElement('div', 'branding');
+                const brandH1 = createElement('h1', '', {}, [
+                    createElement('span', '', { textContent: '🌍' }),
+                    createElement('span', '', { textContent: ' Irodx' })
+                ]);
+                const brandP = createElement('p', '', { textContent: 'Weather & Time for any city' });
+                branding.appendChild(brandH1);
+                branding.appendChild(brandP);
                 
-            } catch (error) {
-                // Try to use cached data if available
+                const searchContainer = createElement('div', 'search-container');
+                const searchBox = createElement('div', 'search-box');
+                cityInputEl = createElement('input', 'city-input', { type: 'text', placeholder: 'Enter city name...', value: cityInputValue });
+                const searchBtn = createElement('button', 'search-btn', {}, [ '🔍 ', createElement('span', '', { textContent: 'Search' }) ]);
+                searchBtn.addEventListener('click', () => {
+                    const city = cityInputEl.value.trim();
+                    if (city) getWeatherAndTimeData(city);
+                });
+                cityInputEl.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') searchBtn.click();
+                });
+                searchBox.appendChild(cityInputEl);
+                searchBox.appendChild(searchBtn);
+                
+                recentContainer = createElement('div', 'recent-searches');
+                searchContainer.appendChild(searchBox);
+                searchContainer.appendChild(recentContainer);
+                searchPanel.appendChild(branding);
+                searchPanel.appendChild(searchContainer);
+                
+                // Results Panel
+                const resultsPanel = createElement('div', 'results-panel');
+                weatherContentEl = createElement('div', 'weather-content');
+                resultContainer = createElement('div', 'result');
+                weatherContentEl.appendChild(resultContainer);
+                resultsPanel.appendChild(weatherContentEl);
+                
+                fullContainer.appendChild(searchPanel);
+                fullContainer.appendChild(resultsPanel);
+                rootEl.appendChild(fullContainer);
+                
+                // Bind event handlers after DOM exists
+                renderRecentButtons();
+                renderResultContent();
+            }
+            
+            // ----------------------------- Initialization -----------------------------
+            function init() {
+                rootEl = document.getElementById('app');
+                loadRecentSearches();
+                renderFullUI();
                 const cachedData = getCachedWeatherData();
                 if (cachedData) {
                     displayResults(cachedData.weather, cachedData.time);
-                    showError('Network error. Showing cached data.');
                 } else {
-                    showError('Network error. Please check your connection and try again.');
+                    getWeatherAndTimeData('New York');
                 }
-                console.error("Error:", error);
+                window.addEventListener('resize', () => {
+                    isMobile = window.innerWidth <= 768;
+                });
             }
-        }
-        
-        function displayResults(weatherData, timeData) {
-            const localTime = new Date(timeData.formatted);
             
-            // Weather icon mapping
-            const iconMap = {
-                '01d': 'fas fa-sun',
-                '01n': 'fas fa-moon',
-                '02d': 'fas fa-cloud-sun',
-                '02n': 'fas fa-cloud-moon',
-                '03d': 'fas fa-cloud',
-                '03n': 'fas fa-cloud',
-                '04d': 'fas fa-cloud',
-                '04n': 'fas fa-cloud',
-                '09d': 'fas fa-cloud-showers-heavy',
-                '09n': 'fas fa-cloud-showers-heavy',
-                '10d': 'fas fa-cloud-sun-rain',
-                '10n': 'fas fa-cloud-moon-rain',
-                '11d': 'fas fa-bolt',
-                '11n': 'fas fa-bolt',
-                '13d': 'fas fa-snowflake',
-                '13n': 'fas fa-snowflake',
-                '50d': 'fas fa-smog',
-                '50n': 'fas fa-smog'
-            };
-            
-            const weatherIcon = iconMap[weatherData.weather[0].icon] || 'fas fa-cloud';
-            
-            // Format time
-            const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
-            const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            
-            const resultHTML = `
-                <div class="weather-info">
-                    <div class="weather-header">
-                        <div>
-                            <h2>${weatherData.name}, ${weatherData.sys.country}</h2>
-                            <p>${weatherData.weather[0].description}</p>
-                        </div>
-                        <div class="weather-icon">
-                            <i class="${weatherIcon}"></i>
-                        </div>
-                    </div>
-                    
-                    <div class="temp-display">
-                        <p style="font-size: 2.8rem; font-weight: 700; margin: 0.5rem 0;">${Math.round(weatherData.main.temp)}°C</p>
-                        <p>Feels like: ${Math.round(weatherData.main.feels_like)}°C</p>
-                    </div>
-                    
-                    <div class="weather-details">
-                        <div class="detail-item">
-                            <i class="fas fa-temperature-low"></i>
-                            <div class="detail-info">
-                                <p>Min Temp</p>
-                                <p><strong>${Math.round(weatherData.main.temp_min)}°C</strong></p>
-                            </div>
-                        </div>
-                        
-                        <div class="detail-item">
-                            <i class="fas fa-temperature-high"></i>
-                            <div class="detail-info">
-                                <p>Max Temp</p>
-                                <p><strong>${Math.round(weatherData.main.temp_max)}°C</strong></p>
-                            </div>
-                        </div>
-                        
-                        <div class="detail-item">
-                            <i class="fas fa-tint"></i>
-                            <div class="detail-info">
-                                <p>Humidity</p>
-                                <p><strong>${weatherData.main.humidity}%</strong></p>
-                            </div>
-                        </div>
-                        
-                        <div class="detail-item">
-                            <i class="fas fa-wind"></i>
-                            <div class="detail-info">
-                                <p>Wind</p>
-                                <p><strong>${weatherData.wind.speed} m/s</strong></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="time-info">
-                    <h3><i class="fas fa-clock"></i> Local Time</h3>
-                    <div class="time-display">${localTime.toLocaleTimeString('en-US', timeOptions)}</div>
-                    <div class="date-display">${localTime.toLocaleDateString('en-US', dateOptions)}</div>
-                    <p><strong>Timezone:</strong> ${timeData.zoneName}</p>
-                </div>
-            `;
-            
-            resultDiv.innerHTML = resultHTML;
-            
-            // Auto-scroll to top of results for better mobile view
-            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-        
-        function showError(message) {
-            resultDiv.innerHTML = `
-                <div class="error">
-                    <i class="fas fa-exclamation-triangle"></i> ${message}
-                </div>
-                <p style="margin-top: 1.5rem; text-align: center;">
-                    <i class="fas fa-lightbulb"></i> Tip: Try entering a major city name
-                </p>
-            `;
-        }
+            init();
+        })();
