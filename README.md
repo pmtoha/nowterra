@@ -2,7 +2,7 @@
 
 Irodx is a sleek, responsive web application that provides real-time weather conditions and local time for any city worldwide. With a clean dual-panel interface, it offers instant search, recent search history, offline caching, and touch-friendly interactions—perfect for both desktop and mobile use.
 
-![Weather App Demo](https://www.aitinc.site/nowterra.html)
+**(https://www.aitinc.site/nowterra.html)
 
 ## ✨ Features
 
