@@ -122,7 +122,7 @@ def weather_time():
 # Serve the frontend HTML file at root
 @app.route('/')
 def index():
-    return send_from_directory('.', 'nowterra.html')
+    return send_from_directory('.', 'index.html')
 
 # Serve the CSS file (must be present in the same directory)
 @app.route('/main.css')
