@@ -2,7 +2,7 @@
 
 A sleek, responsive web application that provides real-time weather data and local time information for any city worldwide. The app features a modern glass-morphism UI, recent search history, caching for offline support, and live updating clocks.
 
-**Live Demo:** [https://www.aitinc.site/nowterra.html](https://www.aitinc.site/nowterra.html)  
+**Live Demo:** [https://nowterra.vercel.app](https://nowterra.vercel.app)  
 *Note: The live demo connects to a backend configured with API keys. To run your own instance, follow the setup instructions below.*
 
 ## Features
